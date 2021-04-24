@@ -8,7 +8,10 @@ import matplotlib.pyplot as plt
 def collate_fn(batch):
     data0 = [item[0] for item in batch]
     data1 = [item[1] for item in batch]
-    return [data0, data1]
+    data2 = [item[2] for item in batch]
+    data3 = [item[3] for item in batch]
+    data4 = [item[4] for item in batch]
+    return [data0, data1, data2, data3, data4]
 
 class SphereDataset(Dataset):
     def __init__(self, data_dir, length):
@@ -16,24 +19,34 @@ class SphereDataset(Dataset):
         self.data = []
         for i in range(500):
             self.data.append(os.path.join(self.state_dir, '%03d_cloth.txt' % i))
-        self.cloth_topo = np.load(os.path.join(data_dir, 'cloth_connection.npy'))
-        self.sphere_topo = np.load(os.path.join(data_dir, 'sphere_connection.npy'))
+        self.cloth_topo = np.load(os.path.join(data_dir, 'cloth_connection.npy'), allow_pickle = True)
+        self.sphere_topo = np.load(os.path.join(data_dir, 'sphere_connection.npy'), allow_pickle = True)
+        self.adj_map = np.load(os.path.join(data_dir, 'adj_map.npy'), allow_pickle = True)
+        self.uvedge_node_i = np.load(os.path.join(data_dir, 'uvedge_node_i.npy'), allow_pickle = True)
+        self.uvedge_node_j = np.load(os.path.join(data_dir, 'uvedge_node_j.npy'), allow_pickle = True)
 
-        self.cloth_mean = np.load(os.path.join(data_dir, 'cloth_mean.npy'))
-        self.sphere_mean = np.load(os.path.join(data_dir, 'ball_mean.npy'))
-        self.cloth_std = np.load(os.path.join(data_dir, 'cloth_std.npy'))
-        self.sphere_std = np.load(os.path.join(data_dir, 'ball_std.npy'))
-        self.collision_distance = 0.05
-        self.cloth_want_idx = [0,1,2,9,10,11,16,17]#0-2:position, 9-11:velocity, 16-17:u-v coord
+        self.cloth_mean = np.load(os.path.join(data_dir, 'cloth_mean.npy'), allow_pickle = True)
+        self.sphere_mean = np.load(os.path.join(data_dir, 'ball_mean.npy'), allow_pickle = True)
+        self.cloth_std = np.load(os.path.join(data_dir, 'cloth_std.npy'), allow_pickle = True)
+        self.sphere_std = np.load(os.path.join(data_dir, 'ball_std.npy'), allow_pickle = True)
+        self.collision_distance = 0.015
+        self.cloth_want_idx = [0,1,2, 9,10,11]#0-2:position, 9-11:velocity, 16-17:u-v coord
     
     def __len__(self):
         return len(self.data) - 1
 
     def GetState(self, index):
+        #### get current state, including vertex and edge information, as input ####
         cloth_file = self.data[index]
         ball_file = self.data[index].replace('cloth', 'ball')
+        uv_file = self.data[index].replace('cloth', 'uv')
+        world_file = self.data[index].replace('cloth', 'world')
+
         cloth_data = []
         ball_data = []
+        uv_data = []
+        world_data = []
+
         for line in open(cloth_file, 'r'):
             line = line.split('\n')[0]
             cloth_data.append(np.array([float(data) for data in line.split(' ')[:-1]]))
@@ -42,32 +55,43 @@ class SphereDataset(Dataset):
             line = line.split('\n')[0]
             ball_data.append(np.array([float(data) for data in line.split(' ')[:-1]]))
         
+        for line in open(uv_file, 'r'):
+            line = line.split('\n')[0]
+            uv_data.append(np.array([float(data) for data in line.split(' ')]))
+
+        for line in open(world_file, 'r'):
+            line = line.split('\n')[0]
+            world_data.append(np.array([float(data) for data in line.split(' ')]))
+            
         cloth_data = np.array(cloth_data)
         ball_data = np.array(ball_data)
-
-        return cloth_data, ball_data
-        # cloth_data = (np.array(cloth_data).astype(np.float32) - np.expand_dims(self.cloth_mean, 0)) / np.expand_dims(self.cloth_std, 0)
-        # ball_data = (np.array(ball_data).astype(np.float32) - np.expand_dims(self.sphere_mean, 0)) / np.expand_dims(self.sphere_std, 0)
+        uv_data = np.array(uv_data)
+        world_data = np.array(world_data)
+        
+        #### get next state, mainly the position, as output ####
+        cloth_nxt_file = self.data[index+1]
+        cloth_nxt_data = []
+        for line in open(cloth_nxt_file, 'r'):
+            line = line.split('\n')[0]
+            cloth_nxt_data.append(np.array([float(data) for data in line.split(' ')[:-1]]))
+        cloth_nxt_data = np.array(cloth_nxt_data)
+        
+        return cloth_data, ball_data, uv_data, world_data, cloth_nxt_data
 
     def __getitem__(self, index):
-        cloth_state, ball_state = self.GetState(index)
-        cloth_nxt_state, ball_nxt_state = self.GetState(index + 1)
-        #### compute the edge feature ####
-        # cloth_dis = cloth_state[:, self.cloth_want_idx].copy()
-        # cloth_nxt_dis = cloth_nxt_state[:, self.cloth_want_idx].copy()
-        # dis_cloth = np.triu(np.linalg.norm(cloth_dis[:, None, :3] - cloth_dis[None, :, :3], axis=-1))
-        # dis_ball = np.linalg.norm(cloth_dis[:, None, :3] - ball_state[None, :, :3], axis=-1)
-        
-        return torch.Tensor(cloth_state[:np.random.choice(10, 1)[0] + 10]), torch.Tensor(ball_state[:np.random.choice(10, 1)[0] + 10])
+        cloth_state, ball_state, uv_state, world_state, cloth_nxt_state = self.GetState(index)
+        return torch.from_numpy(cloth_state[:, self.cloth_want_idx].astype(np.float32)),\
+               torch.from_numpy(ball_state.astype(np.float32)), \
+               torch.from_numpy(uv_state.astype(np.float32)),\
+               torch.from_numpy(world_state.astype(np.float32)),\
+               torch.from_numpy(cloth_nxt_state[:, :3].astype(np.float32))
 
 if __name__ == '__main__':
     spdataset = SphereDataset('../Data', 500)
-    sploader = DataLoader(spdataset, batch_size = 2, shuffle = True, num_workers = 32, collate_fn = collate_fn)
-    for cloth_data, ball_data in sploader:
-        print(cloth_data[0].size(), ball_data[0].size())
-        # cloth_data = cloth_data.cuda()
-        # ball_data = ball_data.cuda()
-        # print(cloth_data.size(), ball_data.size())
+    sploader = DataLoader(spdataset, batch_size = 2, shuffle = True, num_workers = 2, collate_fn = collate_fn)
+    for cloth_state, ball_state, uv_state, world_state, cloth_nxt_state in sploader:
+        print(cloth_state[0].shape, ball_state[0].shape, uv_state[0].shape, world_state[0].shape, cloth_nxt_state[0].shape)
+
     # import plotly.graph_objects as go
     # import numpy as np
 

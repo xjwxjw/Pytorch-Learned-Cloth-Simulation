@@ -20,8 +20,8 @@ def GenDataStat():
         print('%s_std:' % target, target_std + 1e-10)
 
 def GenEdgeFeature():
-    cloth_connection = np.load('../Data/cloth_connection.npy').item()    
-    ball_connection = np.load('../Data/sphere_connection.npy').item()    
+    cloth_connection = np.load('../Data/cloth_connection.npy', allow_pickle=True).item()    
+    ball_connection = np.load('../Data/sphere_connection.npy', allow_pickle=True).item()    
     for i in range(500):
         print(i)
         cloth_data = []
@@ -37,6 +37,26 @@ def GenEdgeFeature():
             line = line.split('\n')[0]
             ball_data.append(np.array([float(data) for data in line.split(' ')[:-1]]))
         ball_data = np.array(ball_data)
+
+        #### get the node-edge correspondence in the uvmap ####
+        if i == 0:
+            node_i_list = []
+            node_j_list = []
+            for key in cloth_connection.keys():
+                for val in cloth_connection[key]:
+                    node_i_list.append(key)
+                    node_j_list.append(val)
+            np.save('../Data/uvedge_node_i.npy', np.array(node_i_list))
+            np.save('../Data/uvedge_node_j.npy', np.array(node_j_list))
+
+            #### get the adjacent matrix of the uvmap ####
+            adj_map = np.zeros((len(cloth_connection.keys()), len(node_i_list)))
+            edge_cnt = 0
+            for key in cloth_connection.keys():
+                for val in cloth_connection[key]:
+                    adj_map[key, edge_cnt] = 1
+                    edge_cnt += 1
+            np.save('../Data/adj_map.npy', adj_map)
 
         foutuv = open('../Data/0002/%03d_uv.txt' % i, 'w')
         for key in cloth_connection.keys():
@@ -62,17 +82,15 @@ def GenEdgeFeature():
             xij = i_vertx[:3] - j_vertx[:3]
             xij_norm = np.linalg.norm(xij, ord = 2)
             if xij_norm < 0.015 and (idx[0] != idx[1]):
-                #print("cloth, %d, %d" % (idx[0], idx[1]))
-                foutworld.write("%d %.6f %.6f %.6f %.6f\n" % (idx[0], xij[0], xij[1], xij[2], xij_norm))
+                foutworld.write("%d %d %.6f %.6f %.6f %.6f\n" % (idx[0], idx[1], xij[0], xij[1], xij[2], xij_norm))
         
         for idx in idxs_ball:
-            i_vertx = ball_data[idx[0]]
-            j_vertx = cloth_data[idx[1]]
+            i_vertx = cloth_data[idx[1]]
+            j_vertx = ball_data[idx[0]]
             xij = i_vertx[:3] - j_vertx[:3]
             xij_norm = np.linalg.norm(xij, ord = 2)
             if xij_norm < 0.015:
-                #print("ball, %d, %d" % (idx[0], idx[1]))
-                foutworld.write("%d %.6f %.6f %.6f %.6f\n" % (idx[1], xij[0], xij[1], xij[2], xij_norm))
+                foutworld.write("%d %d %.6f %.6f %.6f %.6f\n" % (idx[1], idx[0], xij[0], xij[1], xij[2], xij_norm))
         foutworld.close()
 
 def GenWorldEdgeFeature():

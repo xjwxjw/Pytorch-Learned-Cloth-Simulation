@@ -50,7 +50,9 @@ class Decoder(nn.Module):
         x = self.ac_h1(x)
         x = self.fc_out(x)
         return x
-    
+
+
+##NOTE: MLPs in Processor HAVE residual connection!!!    
 class Processor(nn.Module):
     def __init__(self, in_features, out_features, hidden_features):
         super(Processor, self).__init__()
@@ -66,13 +68,13 @@ class Processor(nn.Module):
         self.fc_out = nn.Linear(self.hidden_features, self.out_features)
         self.ac_out = nn.LayerNorm(self.out_features)
     
-    def forward(self, x):
-        x = self.fc_in(x)
+    def forward(self, x_in):
+        x = self.fc_in(x_in)
         x = self.ac_in(x)
         x = self.fc_h0(x)
         x = self.ac_h0(x)
         x = self.fc_h1(x)
         x = self.ac_h1(x)
         x = self.fc_out(x)
-        x = self.ac_out(x)
-        return x
+        x_out = self.ac_out(x) + x_in[:, :, :self.in_features // 3]
+        return x_out
