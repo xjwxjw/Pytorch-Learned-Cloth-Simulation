@@ -117,8 +117,8 @@ def main():
                     worldedge_feature = worldedge_processor_list[l](worldedge_feature)
 
                 ### node feature update ####
-                agr_uv_feature = torch.matmul(adj_map, uvedge_feature)
-                agr_world_feature = torch.zeros((batch_size, cloth_state.size(1), hidden_feature)).cuda()
+                agr_uv_feature = torch.matmul(adj_map[:node_feature.size(0)], uvedge_feature)
+                agr_world_feature = torch.zeros((node_feature.size(0), cloth_state.size(1), hidden_feature)).cuda()
                 for bs in range(len(world_state)):
                     cnt = 0
                     if world_state[bs].size(0) > 0:
