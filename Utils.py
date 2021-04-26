@@ -82,6 +82,7 @@ def GenEdgeFeature():
             xij = i_vertx[:3] - j_vertx[:3]
             xij_norm = np.linalg.norm(xij, ord = 2)
             if xij_norm < 0.015 and (idx[0] != idx[1]):
+                print('cloth:', idx[0], idx[1], xij[0], xij[1], xij[2], xij_norm)
                 foutworld.write("%d %d %.6f %.6f %.6f %.6f\n" % (idx[0], idx[1], xij[0], xij[1], xij[2], xij_norm))
         
         for idx in idxs_ball:
@@ -90,6 +91,7 @@ def GenEdgeFeature():
             xij = i_vertx[:3] - j_vertx[:3]
             xij_norm = np.linalg.norm(xij, ord = 2)
             if xij_norm < 0.015:
+                print('ball:', idx[1], idx[0], xij[0], xij[1], xij[2], xij_norm)
                 foutworld.write("%d %d %.6f %.6f %.6f %.6f\n" % (idx[1], idx[0], xij[0], xij[1], xij[2], xij_norm))
         foutworld.close()
 
