@@ -95,7 +95,7 @@ def main():
 
     optimizer = optim.Adam(parm_list, lr=learning_rate, betas=(beta0, beta1))
     total_step = len(sploader)
-    scheduler = torch.optim.lr_scheduler.StepLR(optimizer, 50, gamma=0.1, last_epoch=-1, verbose=False)
+    scheduler = torch.optim.lr_scheduler.StepLR(optimizer, 50, gamma=0.1)
     for num_epoch in range(num_epochs):
         for step, (cloth_state, ball_state, uv_state, world_state, cloth_nxt_state) in enumerate(sploader):
             cloth_state = torch.stack([item for item in cloth_state], 0).cuda()
