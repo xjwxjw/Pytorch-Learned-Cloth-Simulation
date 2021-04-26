@@ -1,5 +1,8 @@
 import os
 import numpy as np
+import time 
+import shutil
+from tensorboardX import SummaryWriter
 
 import torch
 import torch.optim as optim
@@ -12,7 +15,7 @@ def main():
     batch_size = 2
     num_workers = 2
     shuffle = True
-    num_epochs = 5000
+    num_epochs = 5001
     beta0 = 0.9
     beta1 = 0.999
 
@@ -24,6 +27,31 @@ def main():
     hidden_feature = 128
     output_feature = 3
 
+    now = int(time.time())     
+    timeArray = time.localtime(now)
+    otherStyleTime = time.strftime("%Y-%m-%d-%H:%M:%S", timeArray)
+    log_dir = '../Logs/%s' % otherStyleTime
+    model_dir = '../Models/%s' % otherStyleTime
+
+    if not os.path.exists(log_dir):
+        os.makedirs(log_dir)
+    if not os.path.exists(model_dir):
+        os.makedirs(model_dir)
+    
+    def copydirs(from_file, to_file):
+            if not os.path.exists(to_file):  
+                os.makedirs(to_file)
+            files = os.listdir(from_file)  
+            for f in files:
+                if os.path.isdir(from_file + '/' + f):  
+                    copydirs(from_file + '/' + f, to_file + '/' + f)  
+                else:
+                    if '.git' not in from_file:
+                        shutil.copy(from_file + '/' + f, to_file + '/' + f) 
+    copydirs('./', log_dir + '/Src')
+
+    writer = SummaryWriter(log_dir)
+
     spdataset = SphereDataset('../Data', 500)
     adj_map = torch.from_numpy(spdataset.adj_map.astype(np.float32)).cuda().unsqueeze(0)
     adj_map = torch.cat([adj_map for i in range(batch_size)], 0)
@@ -34,7 +62,7 @@ def main():
     uvedge_encoder = Encoder(input_uvedge_feature, hidden_feature, hidden_feature).cuda()
     worldedge_encoder = Encoder(input_worldedge_feature - 2, hidden_feature, hidden_feature).cuda()
 
-    deocder = Decoder(hidden_feature, output_feature, hidden_feature).cuda()
+    decoder = Decoder(hidden_feature, output_feature, hidden_feature).cuda()
 
     node_processor_list = []
     uvedge_processor_list = []
@@ -53,7 +81,7 @@ def main():
         node_processor_list[l].train()
         worldedge_processor_list[l].train()
         uvedge_processor_list[l].train()
-    deocder.train()
+    decoder.train()
     
     parm_list = []
     parm_list += node_encoder.parameters()
@@ -63,10 +91,11 @@ def main():
         parm_list += node_processor_list[l].parameters()
         parm_list += worldedge_processor_list[l].parameters()
         parm_list += uvedge_processor_list[l].parameters()
-    parm_list += deocder.parameters()
+    parm_list += decoder.parameters()
 
     optimizer = optim.Adam(parm_list, lr=learning_rate, betas=(beta0, beta1))
-
+    total_step = len(sploader)
+    scheduler = torch.optim.lr_scheduler.StepLR(optimizer, 50, gamma=0.1, last_epoch=-1, verbose=False)
     for num_epoch in range(num_epochs):
         for step, (cloth_state, ball_state, uv_state, world_state, cloth_nxt_state) in enumerate(sploader):
             cloth_state = torch.stack([item for item in cloth_state], 0).cuda()
@@ -118,7 +147,7 @@ def main():
 
                 ### node feature update ####
                 agr_uv_feature = torch.matmul(adj_map[:node_feature.size(0)], uvedge_feature)
-                agr_world_feature = torch.zeros((node_feature.size(0), cloth_state.size(1), hidden_feature)).cuda()
+                agr_world_feature = torch.ones((node_feature.size(0), cloth_state.size(1), hidden_feature)).cuda()
                 for bs in range(len(world_state)):
                     cnt = 0
                     if world_state[bs].size(0) > 0:
@@ -127,13 +156,25 @@ def main():
                 node_feature = torch.cat([node_feature, agr_uv_feature, agr_world_feature], -1)
                 node_feature = node_processor_list[l](node_feature)
             
-            output = deocder(node_feature)
+            output = decoder(node_feature)
             loss = torch.mean(torch.abs(output - cloth_nxt_state))
 
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
-            print("epoch: %04d, step: %04d, loss: %06f" % (num_epoch, step, loss))
+            # print("epoch: %04d, step: %04d, loss: %06f" % (num_epoch, step, loss))
+            writer.add_scalar('train_loss', loss.detach().cpu().numpy(), global_step = num_epoch * total_step + step)
+
+        if num_epoch % 10 == 0:
+            torch.save(node_encoder.state_dict(), model_dir + '/node_encoder.pkl')
+            torch.save(uvedge_encoder.state_dict(), model_dir + '/uvedge_encoder.pkl')
+            torch.save(worldedge_encoder.state_dict(), model_dir + '/worldedge_encoder.pkl')
+            for l in range(process_steps):
+                torch.save(node_processor_list[l], model_dir + '/node_processor_%02d.pkl' % l)
+                torch.save(uvedge_processor_list[l], model_dir + '/uvedge_processor_%02d.pkl' % l)
+                torch.save(worldedge_processor_list[l], model_dir + '/worldedge_processor_%02d.pkl' % l)
+            torch.save(decoder.state_dict(), model_dir + '/decoder.pkl')
+        scheduler.step()
 
 if __name__ == '__main__':
     main()
