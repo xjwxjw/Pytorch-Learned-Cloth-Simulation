@@ -19,20 +19,22 @@ def GenDataStat():
         print('%s_mean:' % target, target_mean)
         print('%s_std:' % target, target_std + 1e-10)
 
-def GenEdgeFeature():
+import threadpool 
+
+def GenEdgeFeature(seq_id):
     cloth_connection = np.load('../Data/cloth_connection.npy', allow_pickle=True).item()    
     ball_connection = np.load('../Data/sphere_connection.npy', allow_pickle=True).item()    
     for i in range(500):
         print(i)
         cloth_data = []
-        cloth_path = ('../Data/0002/%03d_cloth.txt' % i)
+        cloth_path = ('../Data/data_0424/%04d/%03d_cloth.txt' % (seq_id, i))
         for line in open(cloth_path, 'r'):
             line = line.split('\n')[0]
             cloth_data.append(np.array([float(data) for data in line.split(' ')[:-1]]))
         cloth_data = np.array(cloth_data)
 
         ball_data = []
-        ball_path = ('../Data/0002/%03d_ball.txt' % i)
+        ball_path = ('../Data/data_0424/%04d/%03d_ball.txt' % (seq_id, i))
         for line in open(ball_path, 'r'):
             line = line.split('\n')[0]
             ball_data.append(np.array([float(data) for data in line.split(' ')[:-1]]))
@@ -58,7 +60,7 @@ def GenEdgeFeature():
                     edge_cnt += 1
             np.save('../Data/adj_map.npy', adj_map)
 
-        foutuv = open('../Data/0002/%03d_uv.txt' % i, 'w')
+        foutuv = open('../Data//data_0424/%04d/%03d_uv.txt' % (seq_id, i), 'w')
         for key in cloth_connection.keys():
             for val in cloth_connection[key]:
                 i_vertx = cloth_data[key]
@@ -71,7 +73,7 @@ def GenEdgeFeature():
                             (uij[0], uij[1], uij_norm, xij[0], xij[1], xij[2], xij_norm))
         foutuv.close()
 
-        foutworld = open('../Data/0002/%03d_world.txt' % i, 'w')
+        foutworld = open('../Data/data_0424/%04d/%03d_world.txt' % (seq_id, i), 'w')
         cloth_world_dis = np.sum((cloth_data[None, :, :3] - cloth_data[:, None, :3])**2, -1)**0.5
         ball_world_dis = np.sum((cloth_data[None, :, :3] - ball_data[:, None, :3])**2, -1)**0.5
         idxs_cloth = np.argwhere(cloth_world_dis < 0.015)
@@ -82,7 +84,6 @@ def GenEdgeFeature():
             xij = i_vertx[:3] - j_vertx[:3]
             xij_norm = np.linalg.norm(xij, ord = 2)
             if xij_norm < 0.015 and (idx[0] != idx[1]):
-                print('cloth:', idx[0], idx[1], xij[0], xij[1], xij[2], xij_norm)
                 foutworld.write("%d %d %.6f %.6f %.6f %.6f\n" % (idx[0], idx[1], xij[0], xij[1], xij[2], xij_norm))
         
         for idx in idxs_ball:
@@ -91,13 +92,14 @@ def GenEdgeFeature():
             xij = i_vertx[:3] - j_vertx[:3]
             xij_norm = np.linalg.norm(xij, ord = 2)
             if xij_norm < 0.015:
-                print('ball:', idx[1], idx[0], xij[0], xij[1], xij[2], xij_norm)
                 foutworld.write("%d %d %.6f %.6f %.6f %.6f\n" % (idx[1], idx[0], xij[0], xij[1], xij[2], xij_norm))
         foutworld.close()
 
-def GenWorldEdgeFeature():
-    pass
+import threading
+import multiprocessing
 
 if __name__ == "__main__":
-    GenEdgeFeature()
+    for i in range(100):
+        p1 = multiprocessing.Process(target = GenEdgeFeature, args = (i,))
+        p1.start()
 
