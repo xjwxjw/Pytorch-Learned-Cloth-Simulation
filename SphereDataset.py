@@ -15,13 +15,13 @@ def collate_fn(batch):
     return [data0, data1, data2, data3, data4]
 
 class SphereDataset(Dataset):
-    def __init__(self, data_dir, length):
+    def __init__(self, data_dir, length, train):
         self.data = []
-        # self.seq = []
+        self.train = train
         self.length = length
         for data_id in range(1):
-            state_dir = os.path.join(data_dir, ('data_0424/%04d' % data_id))
-            for file_id in range(2, 499):
+            state_dir = os.path.join(data_dir, ('%04d' % data_id))
+            for file_id in range(2, 3):
                 pre_file = os.path.join(state_dir, '%03d_cloth.txt' % (file_id - 1))
                 cur_file = os.path.join(state_dir, '%03d_cloth.txt' % file_id)
                 nxt_file = os.path.join(state_dir, '%03d_cloth.txt' % (file_id + 1))
@@ -32,14 +32,14 @@ class SphereDataset(Dataset):
         self.uvedge_node_i = np.load(os.path.join(data_dir, 'uvedge_node_i.npy'), allow_pickle = True)
         self.uvedge_node_j = np.load(os.path.join(data_dir, 'uvedge_node_j.npy'), allow_pickle = True)
 
-        self.cloth_mean = np.load(os.path.join(data_dir, 'cloth_mean.npy'), allow_pickle = True)
-        self.sphere_mean = np.load(os.path.join(data_dir, 'ball_mean.npy'), allow_pickle = True)
-        self.cloth_std = np.load(os.path.join(data_dir, 'cloth_std.npy'), allow_pickle = True)
-        self.sphere_std = np.load(os.path.join(data_dir, 'ball_std.npy'), allow_pickle = True)
-        self.collision_distance = 0.015
+        # self.cloth_mean = np.load(os.path.join(data_dir, 'cloth_mean.npy'), allow_pickle = True)
+        # self.sphere_mean = np.load(os.path.join(data_dir, 'ball_mean.npy'), allow_pickle = True)
+        # self.cloth_std = np.load(os.path.join(data_dir, 'cloth_std.npy'), allow_pickle = True)
+        # self.sphere_std = np.load(os.path.join(data_dir, 'ball_std.npy'), allow_pickle = True)
+        # self.collision_distance = 0.015
         self.cloth_want_idx = [0,1,2, 9,10,11]#0-2:position, 9-11:velocity, 16-17:u-v coord
 
-        state_stat = np.load('state_stat.npz')
+        state_stat = np.load('state_stat_sample.npz')
         self.cloth_mean = state_stat['arr_0'].item()['cloth_mean']
         self.cloth_std = state_stat['arr_0'].item()['cloth_std']
         self.ball_mean = state_stat['arr_0'].item()['ball_mean']
@@ -54,7 +54,7 @@ class SphereDataset(Dataset):
     def __len__(self):
         return len(self.data) 
 
-    def GetState(self, index, time_id):
+    def GetState(self, index):
         #### get previous state to calculate the velocity ####
         cloth_pre_file = self.data[index][0]
         cloth_pre_data = []
@@ -150,17 +150,20 @@ class SphereDataset(Dataset):
 
         #### get the final state information ####
         cloth_acc = cloth_nxt_data[:, :3] + cloth_pre_data[:, :3] - 2 * cloth_data[:, :3]
+
         cloth_state = (cloth_state - self.cloth_mean) / self.cloth_std
         ball_state = (ball_state - self.ball_mean) / self.ball_std
         uv_data = (uv_data - self.uv_mean) / self.uv_std
         if len(world_data) > 0:
             world_data = (world_data - self.world_mean) / self.world_std
         cloth_acc = (cloth_acc - self.cloth_nxt_mean) / self.cloth_nxt_std
-        return cloth_state, ball_state, uv_data, world_data, cloth_acc#, worldmap
+        if self.train:
+            return cloth_state, ball_state, uv_data, world_data, cloth_acc
+        else:
+            return cloth_state, ball_state, uv_data, world_data, np.concatenate([cloth_pre_data[:,:3], cloth_data[:, :3]], -1)
 
     def __getitem__(self, index):
-        time_id = np.random.choice(self.length - 3, 1)[0] + 2
-        cloth_state, ball_state, uv_state, world_state, cloth_nxt_state = self.GetState(index, time_id)
+        cloth_state, ball_state, uv_state, world_state, cloth_nxt_state = self.GetState(index)
         return torch.from_numpy(cloth_state.astype(np.float32)),\
                torch.from_numpy(ball_state.astype(np.float32)), \
                torch.from_numpy(uv_state.astype(np.float32)),\
@@ -177,7 +180,6 @@ def GenDataStatics():
     cloth_nxt_state_list = []
     torch.multiprocessing.set_sharing_strategy('file_system')
     for step, (cloth_state, ball_state, uv_state, world_state, cloth_nxt_state) in enumerate(sploader):
-        print(step)
         for bs in range(len(cloth_state)):
             cloth_state_list.append(cloth_state[bs])
             ball_state_list.append(ball_state[bs])

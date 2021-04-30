@@ -16,6 +16,7 @@ def main():
     batch_size = 2
     num_workers = 4
     shuffle = True
+    train = True
     num_epochs = 5001
     beta0 = 0.9
     beta1 = 0.999
@@ -53,7 +54,7 @@ def main():
 
     writer = SummaryWriter(log_dir)
 
-    spdataset = SphereDataset('../Data', 500)
+    spdataset = SphereDataset('../Data', 500, train)
     adj_map = torch.from_numpy(spdataset.adj_map.astype(np.float32)).cuda().unsqueeze(0)
     adj_map = torch.cat([adj_map for i in range(batch_size)], 0)
     uvedge_node_i = spdataset.uvedge_node_i.astype(np.float32)
@@ -64,10 +65,10 @@ def main():
             torch.nn.init.xavier_uniform(m.weight)
             m.bias.data.fill_(0.0)
 
-    node_encoder = Encoder(input_cloth_feature, hidden_feature, hidden_feature, 'bn').cuda()
+    node_encoder = Encoder(input_cloth_feature, hidden_feature, hidden_feature, 'ln').cuda()
     node_encoder.apply(init_weights)
     
-    uvedge_encoder = Encoder(input_uvedge_feature, hidden_feature, hidden_feature, 'bn').cuda()
+    uvedge_encoder = Encoder(input_uvedge_feature, hidden_feature, hidden_feature, 'ln').cuda()
     uvedge_encoder.apply(init_weights)
     
     worldedge_encoder = Encoder(input_worldedge_feature - 2, hidden_feature, hidden_feature, 'ln').cuda()
@@ -80,10 +81,10 @@ def main():
     uvedge_processor_list = []
     worldedge_processor_list = []
     for l in range(process_steps):
-        node_processor_list.append(Processor(hidden_feature * 3, hidden_feature, hidden_feature * 3, 'bn').cuda())
+        node_processor_list.append(Processor(hidden_feature * 3, hidden_feature, hidden_feature * 3, 'ln').cuda())
         node_processor_list[-1].apply(init_weights)
 
-        uvedge_processor_list.append(Processor(hidden_feature * 3, hidden_feature, hidden_feature * 3, 'bn').cuda())
+        uvedge_processor_list.append(Processor(hidden_feature * 3, hidden_feature, hidden_feature * 3, 'ln').cuda())
         uvedge_processor_list[-1].apply(init_weights)
 
         worldedge_processor_list.append(Processor(hidden_feature * 3, hidden_feature, hidden_feature * 3, 'ln').cuda())
