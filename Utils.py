@@ -63,7 +63,7 @@ def GenEdgeFeature(seq_id):
     for i in range(500):
         print(i)
         cloth_data = []
-        cloth_path = ('../Data/%04d/%03d_cloth.txt' % (seq_id, i))
+        cloth_path = ('../Data/%04d_0502/%03d_cloth.txt' % (seq_id, i))
         for line in open(cloth_path, 'r'):
             line = line.split('\n')[0]
             cloth_data.append(np.array([float(data) for data in line.split(' ')[:-1]]))
@@ -73,7 +73,7 @@ def GenEdgeFeature(seq_id):
         if i < 499:
             cloth_idx = i+1
         ball_data = []
-        ball_path = ('../Data/%04d/%03d_ball.txt' % (seq_id, cloth_idx))
+        ball_path = ('../Data/%04d_0502/%03d_ball.txt' % (seq_id, cloth_idx))
         for line in open(ball_path, 'r'):
             line = line.split('\n')[0]
             ball_data.append(np.array([float(data) for data in line.split(' ')[:-1]]))
@@ -99,7 +99,7 @@ def GenEdgeFeature(seq_id):
         #             edge_cnt += 1
         #     np.save('../Data/adj_map.npy', adj_map)
 
-        foutuv = open('../Data/%04d/%03d_uv.txt' % (seq_id, i), 'w')
+        foutuv = open('../Data/%04d_0502/%03d_uv.txt' % (seq_id, i), 'w')
         for key in cloth_connection.keys():
             for val in cloth_connection[key]:
                 i_vertx = cloth_data[key]
@@ -112,7 +112,7 @@ def GenEdgeFeature(seq_id):
                             (uij[0], uij[1], uij_norm, xij[0], xij[1], xij[2], xij_norm))
         foutuv.close()
 
-        foutworld = open('../Data/%04d/%03d_world.txt' % (seq_id, i), 'w')
+        foutworld = open('../Data/%04d_0502/%03d_world.txt' % (seq_id, i), 'w')
         cloth_world_dis = np.sum((cloth_data[None, :, :3] - cloth_data[:, None, :3])**2, -1)**0.5
         ball_world_dis = np.sum((cloth_data[None, :, :3] - ball_data[:, None, :3])**2, -1)**0.5
         idxs_cloth = np.argwhere(cloth_world_dis < 0.015)

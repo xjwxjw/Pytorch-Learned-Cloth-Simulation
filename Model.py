@@ -107,5 +107,4 @@ class Processor(nn.Module):
         x = x.view(-1, x.size(-1))
         x = self.norm_out(x)
         x = x.view(x_in.size(0), x_in.size(1), x.size(-1))
-        x_out = x + x_in[:, :, :self.in_features // 3]
-        return x_out
+        return x

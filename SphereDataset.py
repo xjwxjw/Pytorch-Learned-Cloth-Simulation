@@ -15,13 +15,15 @@ def collate_fn(batch):
     return [data0, data1, data2, data3, data4]
 
 class SphereDataset(Dataset):
-    def __init__(self, data_dir, length, train):
+    def __init__(self, data_dir, length, train, noise):
         self.data = []
         self.train = train
         self.length = length
+        self.noise = noise
+        self.vel_scale = np.array([0.01, 0.005, 0.001]) / 30.0
         for data_id in range(1):
             state_dir = os.path.join(data_dir, ('%04d' % data_id))
-            for file_id in range(2, 3):
+            for file_id in range(3, 499):
                 pre_file = os.path.join(state_dir, '%03d_cloth.txt' % (file_id - 1))
                 cur_file = os.path.join(state_dir, '%03d_cloth.txt' % file_id)
                 nxt_file = os.path.join(state_dir, '%03d_cloth.txt' % (file_id + 1))
@@ -31,13 +33,6 @@ class SphereDataset(Dataset):
         self.adj_map = np.load(os.path.join(data_dir, 'adj_map.npy'), allow_pickle = True)
         self.uvedge_node_i = np.load(os.path.join(data_dir, 'uvedge_node_i.npy'), allow_pickle = True)
         self.uvedge_node_j = np.load(os.path.join(data_dir, 'uvedge_node_j.npy'), allow_pickle = True)
-
-        # self.cloth_mean = np.load(os.path.join(data_dir, 'cloth_mean.npy'), allow_pickle = True)
-        # self.sphere_mean = np.load(os.path.join(data_dir, 'ball_mean.npy'), allow_pickle = True)
-        # self.cloth_std = np.load(os.path.join(data_dir, 'cloth_std.npy'), allow_pickle = True)
-        # self.sphere_std = np.load(os.path.join(data_dir, 'ball_std.npy'), allow_pickle = True)
-        # self.collision_distance = 0.015
-        self.cloth_want_idx = [0,1,2, 9,10,11]#0-2:position, 9-11:velocity, 16-17:u-v coord
 
         state_stat = np.load('state_stat_sample.npz')
         self.cloth_mean = state_stat['arr_0'].item()['cloth_mean']
@@ -73,7 +68,6 @@ class SphereDataset(Dataset):
                 ball_pre_data.append(np.array([float(data) for data in line.split(' ')[:-1]]))
             ball_pre_data = np.array(ball_pre_data)
             f.close()
-
 
         #### get current state, including vertex and edge information, as input ####
         cloth_file = self.data[index][1]
@@ -117,6 +111,14 @@ class SphereDataset(Dataset):
         uv_data = np.array(uv_data)
         world_data = np.array(world_data)
         
+        cloth_data_noise = None
+        if self.noise:
+            delta_x = np.random.normal(0, self.vel_scale[0], cloth_data[:, 0:1].shape)
+            delta_y = np.random.normal(0, self.vel_scale[1], cloth_data[:, 1:2].shape)
+            delta_z = np.random.normal(0, self.vel_scale[2], cloth_data[:, 2:3].shape)
+            delta = np.concatenate([delta_x, delta_y, delta_z], -1)
+            cloth_data_noise = cloth_data[:, :3] + delta
+
         #### get next state, mainly the position, as output ####
         cloth_nxt_file = self.data[index][2]
         cloth_nxt_data = []
@@ -137,26 +139,49 @@ class SphereDataset(Dataset):
             f.close()
         ball_nxt_data = np.array(ball_nxt_data)
 
-        #### get the velocity information ####
-        cloth_vel = cloth_data[:, :3] - cloth_pre_data[:, :3]
-        cloth_label = np.zeros((cloth_vel.shape[0], 2))
-        cloth_label[:, 0] = 1.0
-        cloth_state = np.concatenate([cloth_label, cloth_vel], -1)
+        if not self.noise:
+            #### get the velocity information ####
+            cloth_vel = cloth_data[:, :3] - cloth_pre_data[:, :3]
+            cloth_label = np.zeros((cloth_vel.shape[0], 2))
+            cloth_label[:, 0] = 1.0
+            #### kinematic node ####
+            cloth_label[1] = np.array([0.0, 1.0])
+            cloth_label[645] = np.array([0.0, 1.0])
+            cloth_state = np.concatenate([cloth_label, cloth_vel], -1)
+            #### get the final state information ####
+            cloth_acc = cloth_nxt_data[:, :3] + cloth_pre_data[:, :3] - 2 * cloth_data[:, :3]
+        else:
+            cloth_vel_noise = cloth_data_noise[:, :3] - cloth_pre_data[:, :3]
+            cloth_nxt_vel = cloth_nxt_data[:, :3] - cloth_data_noise[:, :3]
+            cloth_acc_p = cloth_nxt_vel - cloth_vel_noise
+
+            cloth_nxt_vel = cloth_nxt_data[:, :3] - cloth_data[:, :3]
+            cloth_acc_v = cloth_nxt_vel - cloth_vel_noise
+            cloth_acc = 0.1 * cloth_acc_p + 0.9 * cloth_acc_v
+
+            #### get the velocity information ####
+            cloth_vel = cloth_data_noise[:, :3] - cloth_pre_data[:, :3]
+            cloth_label = np.zeros((cloth_vel.shape[0], 2))
+            cloth_label[:, 0] = 1.0
+            #### kinematic node ####
+            cloth_label[1] = np.array([0.0, 1.0])
+            cloth_label[645] = np.array([0.0, 1.0])
+            cloth_vel[1] = 0.0
+            cloth_vel[645] = 0.0
+            cloth_state = np.concatenate([cloth_label, cloth_vel], -1)
 
         ball_vel = ball_nxt_data[:, :3] - ball_data[:, :3]
         ball_label = np.zeros((ball_vel.shape[0], 2))
         ball_label[:, 1] = 1.0
         ball_state = np.concatenate([ball_label, ball_vel], -1)
 
-        #### get the final state information ####
-        cloth_acc = cloth_nxt_data[:, :3] + cloth_pre_data[:, :3] - 2 * cloth_data[:, :3]
-
         cloth_state = (cloth_state - self.cloth_mean) / self.cloth_std
-        ball_state = (ball_state - self.ball_mean) / self.ball_std
+        ball_state = (ball_state - self.ball_mean) / (self.ball_std + 1e-20)
         uv_data = (uv_data - self.uv_mean) / self.uv_std
         if len(world_data) > 0:
             world_data = (world_data - self.world_mean) / self.world_std
         cloth_acc = (cloth_acc - self.cloth_nxt_mean) / self.cloth_nxt_std
+        
         if self.train:
             return cloth_state, ball_state, uv_data, world_data, cloth_acc
         else:
@@ -171,7 +196,7 @@ class SphereDataset(Dataset):
                torch.from_numpy(cloth_nxt_state.astype(np.float32))
 
 def GenDataStatics():
-    spdataset = SphereDataset('../Data', 500)
+    spdataset = SphereDataset('../Data', 500, True, False)
     sploader = DataLoader(spdataset, batch_size = 32, shuffle = False, num_workers = 48, collate_fn = collate_fn)
     cloth_state_list = []
     ball_state_list = []
@@ -209,6 +234,9 @@ def GenDataStatics():
     world_state_mean = np.mean(world_state, 0)
     world_state_std = np.std(world_state, 0)
 
+    # world_state_mean = np.array([0.0 for i in range(5)])
+    # world_state_std = np.array([1.0 for i in range(5)])
+
     cloth_nxt_state = np.concatenate(cloth_nxt_state_list, 0)
     cloth_nxt_state = cloth_nxt_state.astype(np.float64)
     cloth_nxt_state_mean = np.mean(cloth_nxt_state, 0)
@@ -225,7 +253,7 @@ def GenDataStatics():
     print('uv_state:', uv_state_mean, uv_state_std)
     print('world_state:', world_state_mean, world_state_std)
     print('cloth_nxt_state:', cloth_nxt_state_mean, cloth_nxt_state_std)
-    np.savez('state_stat.npz', {'cloth_mean':cloth_state_mean.astype(np.float32), 'cloth_std':cloth_state_std.astype(np.float32),\
+    np.savez('state_stat_sample.npz', {'cloth_mean':cloth_state_mean.astype(np.float32), 'cloth_std':cloth_state_std.astype(np.float32),\
                                 'ball_mean':ball_state_mean.astype(np.float32), 'ball_std':ball_state_std.astype(np.float32),\
                                 'uv_mean':uv_state_mean.astype(np.float32), 'uv_std':uv_state_std.astype(np.float32),\
                                 'world_mean':world_state_mean.astype(np.float32), 'world_std':world_state_std.astype(np.float32),\
