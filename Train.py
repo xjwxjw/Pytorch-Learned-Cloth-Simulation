@@ -101,7 +101,10 @@ def main():
         worldedge_processor_list.append(Processor(hidden_feature * 3, hidden_feature, hidden_feature * 3, 'ln').cuda())
         worldedge_processor_list[-1].apply(init_weights)
 
-    sploader = DataLoader(spdataset, batch_size = batch_size, shuffle = shuffle, num_workers = num_workers, collate_fn = collate_fn)
+    def worker_init_fn(worker_id):                                                          
+        np.random.seed(np.random.get_state()[1][0] + worker_id)
+
+    sploader = DataLoader(spdataset, batch_size = batch_size, shuffle = shuffle, num_workers = num_workers, collate_fn = collate_fn, worker_init_fn=worker_init_fn)
     
     node_encoder.train()
     uvedge_encoder.train()
@@ -128,6 +131,7 @@ def main():
     
     # world_feature = None
     for num_epoch in range(num_epochs):
+        np.random.seed()
         for step, (cloth_state, ball_state, uv_state, world_state, cloth_nxt_state) in enumerate(sploader):                
             
             cloth_state = torch.stack([item for item in cloth_state], 0).cuda()

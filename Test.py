@@ -11,7 +11,7 @@ from mpl_toolkits.mplot3d import Axes3D
 import matplotlib.pyplot as plt
 
 def main():
-    log_dir = '/home/xjwxjw/Documents/ClothSim/Models/2021-05-02-10:26:48'
+    log_dir = '/home/xjwxjw/Documents/ClothSim/Models/2021-05-02-18:14:19'
     process_steps = 15
     train = False
     noise = False

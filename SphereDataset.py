@@ -20,7 +20,7 @@ class SphereDataset(Dataset):
         self.train = train
         self.length = length
         self.noise = noise
-        self.vel_scale = np.array([0.01, 0.005, 0.001]) / 30.0
+        self.vel_scale = np.array([0.005, 0.005, 0.001]) / 3.0
         for data_id in range(1):
             state_dir = os.path.join(data_dir, ('%04d' % data_id))
             for file_id in range(3, 499):
@@ -45,12 +45,14 @@ class SphereDataset(Dataset):
         self.world_std = state_stat['arr_0'].item()['world_std']
         self.cloth_nxt_mean = state_stat['arr_0'].item()['cloth_nxt_mean']
         self.cloth_nxt_std = state_stat['arr_0'].item()['cloth_nxt_std']
+        self.set_seed = False
         
     def __len__(self):
         return len(self.data) 
 
     def GetState(self, index):
         #### get previous state to calculate the velocity ####
+        p = 1.0#np.random.uniform(0, 1, 1)[0]
         cloth_pre_file = self.data[index][0]
         cloth_pre_data = []
         with open(cloth_pre_file, 'r') as f:
@@ -112,7 +114,7 @@ class SphereDataset(Dataset):
         world_data = np.array(world_data)
         
         cloth_data_noise = None
-        if self.noise:
+        if self.noise and (p > 0.5):
             delta_x = np.random.normal(0, self.vel_scale[0], cloth_data[:, 0:1].shape)
             delta_y = np.random.normal(0, self.vel_scale[1], cloth_data[:, 1:2].shape)
             delta_z = np.random.normal(0, self.vel_scale[2], cloth_data[:, 2:3].shape)
@@ -139,7 +141,7 @@ class SphereDataset(Dataset):
             f.close()
         ball_nxt_data = np.array(ball_nxt_data)
 
-        if not self.noise:
+        if not (self.noise and p > 0.5):
             #### get the velocity information ####
             cloth_vel = cloth_data[:, :3] - cloth_pre_data[:, :3]
             cloth_label = np.zeros((cloth_vel.shape[0], 2))
@@ -164,11 +166,15 @@ class SphereDataset(Dataset):
             cloth_label = np.zeros((cloth_vel.shape[0], 2))
             cloth_label[:, 0] = 1.0
             #### kinematic node ####
-            cloth_label[1] = np.array([0.0, 1.0])
-            cloth_label[645] = np.array([0.0, 1.0])
             cloth_vel[1] = 0.0
             cloth_vel[645] = 0.0
             cloth_state = np.concatenate([cloth_label, cloth_vel], -1)
+
+            ### recompute the uvedge feature ####
+            uvedge_ij = cloth_data_noise[self.uvedge_node_i, :3] - cloth_data_noise[self.uvedge_node_j, :3]
+            uvedge_ij_norm = np.linalg.norm(uvedge_ij, ord = 2, axis = -1, keepdims = True)
+            uv_data = np.concatenate([uv_data[:, :3], uvedge_ij, uvedge_ij_norm], -1)
+            ### currently do not consider the world feature ####
 
         ball_vel = ball_nxt_data[:, :3] - ball_data[:, :3]
         ball_label = np.zeros((ball_vel.shape[0], 2))

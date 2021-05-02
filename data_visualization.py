@@ -28,10 +28,12 @@ def vel_vis():
             vel = np.array([ float(v) for v in vel])
             vel_nxt_array.append(vel)
         vel_nxt_array = np.array(vel_nxt_array)
-        vel_list.append(np.abs(vel_nxt_array[:, 2] - vel_array[:,2]))
+        vel_list.append(vel_nxt_array - vel_array)
     vel_list = np.concatenate(vel_list, 0)
-    plt.hist(vel_list, 200)
-    plt.show()
+    # plt.hist(vel_list[:,2], 200)
+    # plt.show()
+    std = np.std(vel_list, 0)
+    print(std)
 
 if __name__ == "__main__":
     vel_vis()
