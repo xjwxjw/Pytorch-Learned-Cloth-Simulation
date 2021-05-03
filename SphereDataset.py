@@ -52,7 +52,7 @@ class SphereDataset(Dataset):
 
     def GetState(self, index):
         #### get previous state to calculate the velocity ####
-        p = 1.0#np.random.uniform(0, 1, 1)[0]
+        p = np.random.uniform(0, 1, 1)[0]
         cloth_pre_file = self.data[index][0]
         cloth_pre_data = []
         with open(cloth_pre_file, 'r') as f:
@@ -119,8 +119,11 @@ class SphereDataset(Dataset):
             delta_y = np.random.normal(0, self.vel_scale[1], cloth_data[:, 1:2].shape)
             delta_z = np.random.normal(0, self.vel_scale[2], cloth_data[:, 2:3].shape)
             delta = np.concatenate([delta_x, delta_y, delta_z], -1)
+            #### zero-out kinematic node ####
+            delta[1] = 0.0
+            delta[645] = 0.0
             cloth_data_noise = cloth_data[:, :3] + delta
-
+            
         #### get next state, mainly the position, as output ####
         cloth_nxt_file = self.data[index][2]
         cloth_nxt_data = []
@@ -162,13 +165,12 @@ class SphereDataset(Dataset):
             cloth_acc = 0.1 * cloth_acc_p + 0.9 * cloth_acc_v
 
             #### get the velocity information ####
-            cloth_vel = cloth_data_noise[:, :3] - cloth_pre_data[:, :3]
-            cloth_label = np.zeros((cloth_vel.shape[0], 2))
+            cloth_label = np.zeros((cloth_vel_noise.shape[0], 2))
             cloth_label[:, 0] = 1.0
             #### kinematic node ####
-            cloth_vel[1] = 0.0
-            cloth_vel[645] = 0.0
-            cloth_state = np.concatenate([cloth_label, cloth_vel], -1)
+            cloth_label[1] = np.array([0.0, 1.0])
+            cloth_label[645] = np.array([0.0, 1.0])
+            cloth_state = np.concatenate([cloth_label, cloth_vel_noise], -1)
 
             ### recompute the uvedge feature ####
             uvedge_ij = cloth_data_noise[self.uvedge_node_i, :3] - cloth_data_noise[self.uvedge_node_j, :3]
