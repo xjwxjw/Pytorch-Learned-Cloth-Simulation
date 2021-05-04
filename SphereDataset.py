@@ -20,7 +20,8 @@ class SphereDataset(Dataset):
         self.train = train
         self.length = length
         self.noise = noise
-        self.vel_scale = np.array([0.005, 0.005, 0.001]) / 3.0
+        self.vel_scale = np.array([0.01, 0.005, 0.001]) / 3.0
+        self.kinematic_node = [1, 645]
         for data_id in range(1):
             state_dir = os.path.join(data_dir, ('%04d' % data_id))
             for file_id in range(3, 499):
@@ -52,7 +53,7 @@ class SphereDataset(Dataset):
 
     def GetState(self, index):
         #### get previous state to calculate the velocity ####
-        p = np.random.uniform(0, 1, 1)[0]
+        p = 1.0#np.random.uniform(0, 1, 1)[0]
         cloth_pre_file = self.data[index][0]
         cloth_pre_data = []
         with open(cloth_pre_file, 'r') as f:
@@ -120,8 +121,7 @@ class SphereDataset(Dataset):
             delta_z = np.random.normal(0, self.vel_scale[2], cloth_data[:, 2:3].shape)
             delta = np.concatenate([delta_x, delta_y, delta_z], -1)
             #### zero-out kinematic node ####
-            delta[1] = 0.0
-            delta[645] = 0.0
+            delta[self.kinematic_node] = 0.0
             cloth_data_noise = cloth_data[:, :3] + delta
             
         #### get next state, mainly the position, as output ####
@@ -150,8 +150,8 @@ class SphereDataset(Dataset):
             cloth_label = np.zeros((cloth_vel.shape[0], 2))
             cloth_label[:, 0] = 1.0
             #### kinematic node ####
-            cloth_label[1] = np.array([0.0, 1.0])
-            cloth_label[645] = np.array([0.0, 1.0])
+            for node_idx in self.kinematic_node:
+                cloth_label[node_idx] = np.array([0.0, 1.0])
             cloth_state = np.concatenate([cloth_label, cloth_vel], -1)
             #### get the final state information ####
             cloth_acc = cloth_nxt_data[:, :3] + cloth_pre_data[:, :3] - 2 * cloth_data[:, :3]
@@ -168,8 +168,8 @@ class SphereDataset(Dataset):
             cloth_label = np.zeros((cloth_vel_noise.shape[0], 2))
             cloth_label[:, 0] = 1.0
             #### kinematic node ####
-            cloth_label[1] = np.array([0.0, 1.0])
-            cloth_label[645] = np.array([0.0, 1.0])
+            for node_idx in self.kinematic_node:
+                cloth_label[node_idx] = np.array([0.0, 1.0])
             cloth_state = np.concatenate([cloth_label, cloth_vel_noise], -1)
 
             ### recompute the uvedge feature ####
@@ -193,7 +193,7 @@ class SphereDataset(Dataset):
         if self.train:
             return cloth_state, ball_state, uv_data, world_data, cloth_acc
         else:
-            return cloth_state, ball_state, uv_data, world_data, np.concatenate([cloth_pre_data[:,:3], cloth_data[:, :3]], -1)
+            return cloth_state, ball_state, uv_data, world_data, np.concatenate([cloth_pre_data[:,:3], cloth_data[:, :3], cloth_nxt_data[:, :3]], -1)
 
     def __getitem__(self, index):
         cloth_state, ball_state, uv_state, world_state, cloth_nxt_state = self.GetState(index)
@@ -250,6 +250,7 @@ def GenDataStatics():
     cloth_nxt_state_mean = np.mean(cloth_nxt_state, 0)
     cloth_nxt_state_std = np.std(cloth_nxt_state, 0)
 
+    cloth_state_mean[:2] = 0.0
     cloth_state_std[:2] = 1.0
     ball_state_std[:2] = 1.0
     ball_state_std[3:] = 1.0

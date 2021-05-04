@@ -11,7 +11,7 @@ from mpl_toolkits.mplot3d import Axes3D
 import matplotlib.pyplot as plt
 
 def main():
-    log_dir = '/home/xjwxjw/Documents/ClothSim/Models/2021-05-03-01:04:34'
+    log_dir = '/home/xjwxjw/Documents/ClothSim/Models/2021-05-03-20:13:29'
     process_steps = 15
     train = False
     noise = False
@@ -72,12 +72,15 @@ def main():
     cloth_pre_pos = None
     cloth_cur_pos = None
     cloth_nxt_pos = None
+    err_list = []
 
     with torch.no_grad():
         for step, (cloth_state, ball_state, uv_state, world_state, cloth_pos) in enumerate(sploader):   
             cloth_pos = torch.stack([item for item in cloth_pos], 0).cuda()
-            cloth_pre_pos = cloth_pos[:, :, :3]
-            cloth_cur_pos = cloth_pos[:, :, 3:]
+            cloth_pre_pos = cloth_pos[:, :, 0:3]
+            cloth_cur_pos = cloth_pos[:, :, 3:6]
+            cloth_nxt_pos_gt = cloth_pos[:, :, 6:9]
+            # print(step)
             for t in range(500):
                 ball_state = torch.stack([item for item in ball_state], 0).cuda()
                 if t == 0:
@@ -102,6 +105,7 @@ def main():
                     cloth_pre_pos = cloth_cur_pos.clone()
                     cloth_cur_pos = cloth_nxt_pos.clone()
                     cloth_cur_vel = cloth_cur_pos - cloth_pre_pos
+                    # print(cloth_cur_vel[0,645])
                     tmp_mean = torch.from_numpy(spdataset.cloth_mean[2:]).unsqueeze(0).unsqueeze(0).cuda()
                     tmp_std = torch.from_numpy(spdataset.cloth_std[2:]).unsqueeze(0).unsqueeze(0).cuda()
                     cloth_cur_vel = (cloth_cur_vel - tmp_mean) / tmp_std
@@ -206,7 +210,9 @@ def main():
                 output[0, 1] = 0.0
                 output[0, 645] = 0.0
                 cloth_nxt_pos = 2 * cloth_cur_pos + output - cloth_pre_pos
+
                 cloth_nxt_pos_np = cloth_nxt_pos.detach().cpu().numpy()
+                # err_list.append(cloth_nxt_pos_gt.detach().cpu().numpy() - cloth_nxt_pos_np)
                 x = cloth_nxt_pos_np[0,:,0]
                 y = cloth_nxt_pos_np[0,:,2]
                 z = cloth_nxt_pos_np[0,:,1]
@@ -218,6 +224,14 @@ def main():
                 ax.set_zlim([-1.0, 1.0])
                 plt.savefig('../Results/%03d.png' % t)
                 plt.close('all')
+        # err_list = np.concatenate(err_list, 1)
+        # plt.hist(err_list[0, :, 0], 200)
+        # plt.show()
+        # plt.hist(err_list[0, :, 1], 200)
+        # plt.show()
+        # plt.hist(err_list[0, :, 2], 200)
+        # plt.show()
+        # print(np.std(err_list, (0, 1)))
 
 if __name__ == "__main__":
     main()

@@ -9,7 +9,7 @@ import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader
 from SphereDataset import SphereDataset, collate_fn
-from Model import Encoder, Decoder, Processor
+from Model import Encoder, Decoder, Processor, Processor_Res
 
 def main():
     learning_rate = 1e-4
@@ -29,6 +29,7 @@ def main():
     input_worldedge_feature = 6
     hidden_feature = 128
     output_feature = 3
+    res_mode = 1
 
     now = int(time.time())     
     timeArray = time.localtime(now)
@@ -92,13 +93,22 @@ def main():
     uvedge_processor_list = []
     worldedge_processor_list = []
     for l in range(process_steps):
-        node_processor_list.append(Processor(hidden_feature * 3, hidden_feature, hidden_feature * 3, 'ln').cuda())
+        if res_mode == 1:
+            node_processor_list.append(Processor(hidden_feature * 3, hidden_feature, hidden_feature * 3, 'ln').cuda())
+        else:
+            node_processor_list.append(Processor_Res(hidden_feature * 3, hidden_feature, hidden_feature * 3, 'ln').cuda())
         node_processor_list[-1].apply(init_weights)
 
-        uvedge_processor_list.append(Processor(hidden_feature * 3, hidden_feature, hidden_feature * 3, 'ln').cuda())
+        if res_mode == 1:
+            uvedge_processor_list.append(Processor(hidden_feature * 3, hidden_feature, hidden_feature * 3, 'ln').cuda())
+        else:
+            uvedge_processor_list.append(Processor_Res(hidden_feature * 3, hidden_feature, hidden_feature * 3, 'ln').cuda())
         uvedge_processor_list[-1].apply(init_weights)
 
-        worldedge_processor_list.append(Processor(hidden_feature * 3, hidden_feature, hidden_feature * 3, 'ln').cuda())
+        if res_mode == 1:
+            worldedge_processor_list.append(Processor(hidden_feature * 3, hidden_feature, hidden_feature * 3, 'ln').cuda())
+        else:
+            worldedge_processor_list.append(Processor_Res(hidden_feature * 3, hidden_feature, hidden_feature * 3, 'ln').cuda())
         worldedge_processor_list[-1].apply(init_weights)
 
     def worker_init_fn(worker_id):                                                          
@@ -202,32 +212,27 @@ def main():
                 cloth_feature_cat = torch.cat([cloth_feature, agr_uv_feature, agr_world_feature], -1)
                 cloth_nxt_feature = node_processor_list[l](cloth_feature_cat)
 
-                #### residual connection ####
-                uvedge_feature = uvedge_feature + uvedge_nxt_feature
-                if worldedge_feature is not None:
-                    worldedge_feature = worldedge_feature + worldedge_nxt_feature
-                cloth_feature = cloth_feature + cloth_nxt_feature
-                # print(l, cloth_feature[0, 100, :3].detach().cpu().numpy())
+                if res_mode == 1:
+                    #### residual connection ####
+                    uvedge_feature = uvedge_feature + uvedge_nxt_feature
+                    if worldedge_feature is not None:
+                        worldedge_feature = worldedge_feature + worldedge_nxt_feature
+                    cloth_feature = cloth_feature + cloth_nxt_feature
+                else:
+                    uvedge_feature = uvedge_nxt_feature
+                    if worldedge_feature is not None:
+                        worldedge_feature = worldedge_nxt_feature
+                    cloth_feature = cloth_nxt_feature
             
             output = decoder(cloth_feature)
 
             #### zero-out kinematic node ####
-            kinematic_node = [1, 645]
-            output[:, kinematic_node, :] = 0.0
-            cloth_nxt_state[:, kinematic_node, :] = 0.0
+            # kinematic_node = [1, 645]
+            # output[:, kinematic_node, :] = 0.0
+            # cloth_nxt_state[:, kinematic_node, :] = 0.0
 
             loss = torch.sum((output - cloth_nxt_state) ** 2) / (output.size(0) * output.size(1))
             print(num_epoch, step, output[0, 100, :].detach().cpu().numpy(), cloth_nxt_state[0, 100, :].detach().cpu().numpy(), loss.detach().cpu().numpy())
-            # if loss.detach().cpu().numpy() > 10:
-                # fout = open('err.txt', 'w')
-                # pred = output[0, :, :].detach().cpu().numpy()
-                # gt = cloth_nxt_state[0, :, :].detach().cpu().numpy()
-                # for t in range(output[0, :, :].detach().cpu().numpy().shape[0]):
-                #     fout.write('%06f %06f %06f %06f %06f %06f\n' % (gt[t, 0],gt[t, 1],gt[t, 2],pred[t, 0], pred[t, 1], pred[t, 2]))
-                # fout.close()
-            #     print(np.mean((pred - gt) ** 2))
-            #     assert 0
-            
 
             optimizer.zero_grad()
             loss.backward()
