@@ -12,24 +12,25 @@ from SphereDataset import SphereDataset, collate_fn
 from Model import Encoder, Decoder, Processor, Processor_Res
 
 def main():
+    pretrained_model = None#'/home/xjwxjw/Documents/ClothSim/Models/2021-05-05-15:15:14'
     learning_rate = 1e-4
     batch_size = 1
-    num_workers = 4
+    num_workers = 8
     shuffle = True
     train = True
-    noise = True
+    noise = False
     num_epochs = 5001
     beta0 = 0.9
     beta1 = 0.999
+    use_scheduler = True
 
     process_steps = 15
 
-    input_cloth_feature = 5
+    input_cloth_feature = 6
     input_uvedge_feature = 7
     input_worldedge_feature = 6
     hidden_feature = 128
     output_feature = 3
-    res_mode = 1
 
     now = int(time.time())     
     timeArray = time.localtime(now)
@@ -77,39 +78,57 @@ def main():
             truncated_normal_(m.weight)
             m.bias.data.fill_(0.0)
 
-    node_encoder = Encoder(input_cloth_feature, hidden_feature, hidden_feature, 'ln').cuda()
-    node_encoder.apply(init_weights)
-    
-    uvedge_encoder = Encoder(input_uvedge_feature, hidden_feature, hidden_feature, 'ln').cuda()
-    uvedge_encoder.apply(init_weights)
-    
-    worldedge_encoder = Encoder(input_worldedge_feature - 2, hidden_feature, hidden_feature, 'ln').cuda()
-    worldedge_encoder.apply(init_weights)
+    if pretrained_model is not None:
+        node_encoder = Encoder(input_cloth_feature, hidden_feature, hidden_feature, 'ln').cuda()
+        node_encoder.load_state_dict(torch.load(os.path.join(pretrained_model, 'node_encoder.pkl')))
+        
+        uvedge_encoder = Encoder(input_uvedge_feature, hidden_feature, hidden_feature, 'ln').cuda()
+        uvedge_encoder.load_state_dict(torch.load(os.path.join(pretrained_model, 'uvedge_encoder.pkl')))
+        
+        worldedge_encoder = Encoder(input_worldedge_feature - 2, hidden_feature, hidden_feature, 'ln').cuda()
+        worldedge_encoder.load_state_dict(torch.load(os.path.join(pretrained_model, 'worldedge_encoder.pkl')))
 
-    decoder = Decoder(hidden_feature, output_feature, hidden_feature).cuda()
-    decoder.apply(init_weights)
+        decoder = Decoder(hidden_feature, output_feature, hidden_feature).cuda()
+        decoder.load_state_dict(torch.load(os.path.join(pretrained_model, 'decoder.pkl')))
 
-    node_processor_list = []
-    uvedge_processor_list = []
-    worldedge_processor_list = []
-    for l in range(process_steps):
-        if res_mode == 1:
+        node_processor_list = []
+        uvedge_processor_list = []
+        worldedge_processor_list = []
+        for l in range(process_steps):
             node_processor_list.append(Processor(hidden_feature * 3, hidden_feature, hidden_feature * 3, 'ln').cuda())
-        else:
-            node_processor_list.append(Processor_Res(hidden_feature * 3, hidden_feature, hidden_feature * 3, 'ln').cuda())
-        node_processor_list[-1].apply(init_weights)
+            node_processor_list[-1].load_state_dict(torch.load(os.path.join(pretrained_model, 'node_processor_%02d.pkl' % l)))
 
-        if res_mode == 1:
             uvedge_processor_list.append(Processor(hidden_feature * 3, hidden_feature, hidden_feature * 3, 'ln').cuda())
-        else:
-            uvedge_processor_list.append(Processor_Res(hidden_feature * 3, hidden_feature, hidden_feature * 3, 'ln').cuda())
-        uvedge_processor_list[-1].apply(init_weights)
+            uvedge_processor_list[-1].load_state_dict(torch.load(os.path.join(pretrained_model, 'uvedge_processor_%02d.pkl' % l)))
 
-        if res_mode == 1:
             worldedge_processor_list.append(Processor(hidden_feature * 3, hidden_feature, hidden_feature * 3, 'ln').cuda())
-        else:
-            worldedge_processor_list.append(Processor_Res(hidden_feature * 3, hidden_feature, hidden_feature * 3, 'ln').cuda())
-        worldedge_processor_list[-1].apply(init_weights)
+            worldedge_processor_list[-1].load_state_dict(torch.load(os.path.join(pretrained_model, 'worldedge_processor_%02d.pkl' % l)))
+        print("All pretrained models successfully loaded")
+    else:
+        node_encoder = Encoder(input_cloth_feature, hidden_feature, hidden_feature, 'ln').cuda()
+        node_encoder.apply(init_weights)
+        
+        uvedge_encoder = Encoder(input_uvedge_feature, hidden_feature, hidden_feature, 'ln').cuda()
+        uvedge_encoder.apply(init_weights)
+        
+        worldedge_encoder = Encoder(input_worldedge_feature - 2, hidden_feature, hidden_feature, 'ln').cuda()
+        worldedge_encoder.apply(init_weights)
+
+        decoder = Decoder(hidden_feature, output_feature, hidden_feature).cuda()
+        decoder.apply(init_weights)
+
+        node_processor_list = []
+        uvedge_processor_list = []
+        worldedge_processor_list = []
+        for l in range(process_steps):
+            node_processor_list.append(Processor(hidden_feature * 3, hidden_feature, hidden_feature * 3, 'ln').cuda())
+            node_processor_list[-1].apply(init_weights)
+
+            uvedge_processor_list.append(Processor(hidden_feature * 3, hidden_feature, hidden_feature * 3, 'ln').cuda())
+            uvedge_processor_list[-1].apply(init_weights)
+
+            worldedge_processor_list.append(Processor(hidden_feature * 3, hidden_feature, hidden_feature * 3, 'ln').cuda())
+            worldedge_processor_list[-1].apply(init_weights)
 
     def worker_init_fn(worker_id):                                                          
         np.random.seed(np.random.get_state()[1][0] + worker_id)
@@ -137,24 +156,21 @@ def main():
 
     optimizer = optim.Adam(parm_list, lr=learning_rate, betas=(beta0, beta1))
     total_step = len(sploader)
-    scheduler = torch.optim.lr_scheduler.StepLR(optimizer, 100, gamma=0.1)
+    scheduler = None
+    if use_scheduler:
+        scheduler = torch.optim.lr_scheduler.StepLR(optimizer, 500, gamma=0.1)
     
     # world_feature = None
     for num_epoch in range(num_epochs):
         np.random.seed()
-        for step, (cloth_state, ball_state, uv_state, world_state, cloth_nxt_state) in enumerate(sploader):                
+        for step, (cloth_state, ball_state, uv_state, world_state, cloth_nxt_state, world_adjmap) in enumerate(sploader):                
             
             cloth_state = torch.stack([item for item in cloth_state], 0).cuda()
             ball_state = torch.stack([item for item in ball_state], 0).cuda()
             uv_state = torch.stack([item for item in uv_state], 0).cuda()
             cloth_nxt_state = torch.stack([item for item in cloth_nxt_state], 0).cuda()
+            # world_adjmap = torch.stack([item for item in world_adjmap], 0).cuda()
 
-            # fout = open('../Results_Acc/%04d.txt' % step, 'w')
-            # gt = cloth_nxt_state[0, :, :].detach().cpu().numpy()
-            # for t in range(cloth_nxt_state[0, :, :].detach().cpu().numpy().shape[0]):
-            #     fout.write('%06f %06f %06f\n' % (gt[t, 0],gt[t, 1],gt[t, 2]))
-            # fout.close()
-            # continue
             #### encoder part ####
             cloth_feature = node_encoder(cloth_state)
             ball_feature = node_encoder(ball_state)
@@ -198,31 +214,28 @@ def main():
                     worldedge_feature_node_j = torch.cat(worldedge_feature_node_j_list, 0).unsqueeze(0)
                     worldedge_feature_cat = torch.cat([worldedge_feature, worldedge_feature_node_i, worldedge_feature_node_j], -1) 
                     worldedge_nxt_feature = worldedge_processor_list[l](worldedge_feature_cat)
+                    #### NOTE: here we assume batch size is 1 ####
+                    agr_world_feature = torch.matmul(world_adjmap[0].unsqueeze(0).cuda(), worldedge_nxt_feature)
+                else:
+                    agr_world_feature = torch.zeros((len(cloth_state), cloth_state[0].size(0), hidden_feature)).cuda()
 
                 ### node feature update ####
                 agr_uv_feature = torch.matmul(adj_map[:cloth_feature.size(0)], uvedge_nxt_feature)
-                agr_world_feature = torch.zeros((len(cloth_state), cloth_state[0].size(0), hidden_feature)).cuda()
-                cnt = 0
-                for bs in range(len(world_state)):
-                    if world_state[bs].size(0) > 0:
-                        for node_i_idx in worldedge_node_i_index_list[bs]:
-                            agr_world_feature[bs, int(node_i_idx)] += worldedge_nxt_feature[0, cnt]
-                            cnt += 1
-                # agr_world_feature = torch.sum(world_feature, 2)
+                # agr_world_feature = torch.zeros((len(cloth_state), cloth_state[0].size(0), hidden_feature)).cuda()
+                # cnt = 0
+                # for bs in range(len(world_state)):
+                #     if world_state[bs].size(0) > 0:
+                #         for node_i_idx in worldedge_node_i_index_list[bs]:
+                #             agr_world_feature[bs, int(node_i_idx)] += worldedge_nxt_feature[0, cnt]
+                #             cnt += 1
                 cloth_feature_cat = torch.cat([cloth_feature, agr_uv_feature, agr_world_feature], -1)
                 cloth_nxt_feature = node_processor_list[l](cloth_feature_cat)
 
-                if res_mode == 1:
-                    #### residual connection ####
-                    uvedge_feature = uvedge_feature + uvedge_nxt_feature
-                    if worldedge_feature is not None:
-                        worldedge_feature = worldedge_feature + worldedge_nxt_feature
-                    cloth_feature = cloth_feature + cloth_nxt_feature
-                else:
-                    uvedge_feature = uvedge_nxt_feature
-                    if worldedge_feature is not None:
-                        worldedge_feature = worldedge_nxt_feature
-                    cloth_feature = cloth_nxt_feature
+                #### residual connection ####
+                uvedge_feature = uvedge_feature + uvedge_nxt_feature
+                if worldedge_feature is not None:
+                    worldedge_feature = worldedge_feature + worldedge_nxt_feature
+                cloth_feature = cloth_feature + cloth_nxt_feature
             
             output = decoder(cloth_feature)
 
@@ -249,7 +262,8 @@ def main():
             torch.save(uvedge_processor_list[l].state_dict(), model_dir + '/uvedge_processor_%02d.pkl' % l)
             torch.save(worldedge_processor_list[l].state_dict(), model_dir + '/worldedge_processor_%02d.pkl' % l)
         torch.save(decoder.state_dict(), model_dir + '/decoder.pkl')
-        scheduler.step()
+        if use_scheduler:
+            scheduler.step()
 
 if __name__ == '__main__':
     main()
