@@ -22,7 +22,7 @@ def GenDataStat():
 def draw_gt_data():
     for i in range(100):
         for j in range(500):
-            for line in open('../Data/data_0424/%04d/%03d_world.txt' % (i, j), 'r'):
+            for line in open('../Data/data/%04d/%03d_world.txt' % (i, j), 'r'):
                 if (line.split('\n')[0].split(' ')[0] == '0'):
                  print(line.split('\n')[0].split(' '))
     cloth_connection = np.array([int(line.split('\n')[0]) for line in open('../Data/cloth_connection.txt', 'r')])
@@ -35,14 +35,14 @@ def draw_gt_data():
     
     for i in range(500):
         cloth_data = []
-        for line in open('../Data/data_0424/0002/%03d_cloth.txt' % i, 'r'):
+        for line in open('../Data/data/0002/%03d_cloth.txt' % i, 'r'):
             line = line.split('\n')[0]
             cloth_data.append(np.array([float(data) for data in line.split(' ')[:-1]]))
         cloth_data = np.array(cloth_data)
         cloth_x, cloth_y, cloth_z = cloth_data[:,:3].T
 
         ball_data = []
-        for line in open('../Data/data_0424/0002/%03d_ball.txt' % i, 'r'):
+        for line in open('../Data/data/0002/%03d_ball.txt' % i, 'r'):
             line = line.split('\n')[0]
             ball_data.append(np.array([float(data) for data in line.split(' ')[:-1]]))
         ball_data = np.array(ball_data)
@@ -63,7 +63,7 @@ def GenEdgeFeature(seq_id):
     for i in range(500):
         print(i)
         cloth_data = []
-        cloth_path = ('../Data/data_0424/%04d/%03d_cloth.txt' % (seq_id, i))
+        cloth_path = ('../Data/data/%04d/%03d_cloth.txt' % (seq_id, i))
         for line in open(cloth_path, 'r'):
             line = line.split('\n')[0]
             cloth_data.append(np.array([float(data) for data in line.split(' ')[:-1]]))
@@ -73,33 +73,13 @@ def GenEdgeFeature(seq_id):
         if i < 499:
             cloth_idx = i+1
         ball_data = []
-        ball_path = ('../Data/data_0424/%04d/%03d_ball.txt' % (seq_id, cloth_idx))
+        ball_path = ('../Data/data/%04d/%03d_ball.txt' % (seq_id, cloth_idx))
         for line in open(ball_path, 'r'):
             line = line.split('\n')[0]
             ball_data.append(np.array([float(data) for data in line.split(' ')[:-1]]))
         ball_data = np.array(ball_data)
 
-        #### get the node-edge correspondence in the uvmap ####
-        # if i == 0:
-        #     node_i_list = []
-        #     node_j_list = []
-        #     for key in cloth_connection.keys():
-        #         for val in cloth_connection[key]:
-        #             node_i_list.append(key)
-        #             node_j_list.append(val)
-        #     np.save('../Data/uvedge_node_i.npy', np.array(node_i_list))
-        #     np.save('../Data/uvedge_node_j.npy', np.array(node_j_list))
-
-        #     #### get the adjacent matrix of the uvmap ####
-        #     adj_map = np.zeros((len(cloth_connection.keys()), len(node_i_list)))
-        #     edge_cnt = 0
-        #     for key in cloth_connection.keys():
-        #         for val in cloth_connection[key]:
-        #             adj_map[key, edge_cnt] = 1
-        #             edge_cnt += 1
-        #     np.save('../Data/adj_map.npy', adj_map)
-
-        foutuv = open('../Data/data_0424/%04d/%03d_uv.txt' % (seq_id, i), 'w')
+        foutuv = open('../Data/data/%04d/%03d_uv.txt' % (seq_id, i), 'w')
         for key in cloth_connection.keys():
             for val in cloth_connection[key]:
                 i_vertx = cloth_data[key]
@@ -112,7 +92,7 @@ def GenEdgeFeature(seq_id):
                             (uij[0], uij[1], uij_norm, xij[0], xij[1], xij[2], xij_norm))
         foutuv.close()
 
-        foutworld = open('../Data/data_0424/%04d/%03d_world.txt' % (seq_id, i), 'w')
+        foutworld = open('../Data/data/%04d/%03d_world.txt' % (seq_id, i), 'w')
         cloth_world_dis = np.sum((cloth_data[None, :, :3] - cloth_data[:, None, :3])**2, -1)**0.5
         ball_world_dis = np.sum((cloth_data[None, :, :3] - ball_data[:, None, :3])**2, -1)**0.5
         idxs_cloth = np.argwhere(cloth_world_dis < 0.02)

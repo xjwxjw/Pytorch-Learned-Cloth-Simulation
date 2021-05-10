@@ -45,16 +45,16 @@ def vel_vis():
     vel_list = []
     for t in range(3, 496):
         vel_array = []
-        for line in open('../Data/0000/%03d_cloth.txt' % t, 'r'):
+        for line in open('../Data/0050/%03d_cloth.txt' % t, 'r'):
             vel = line.split('\n')[0].split(' ')[:3]
-            vel = np.array([ float(v) for v in vel])
+            vel = np.array([float(v) for v in vel])
             vel_array.append(vel)
         vel_array = np.array(vel_array)
 
         vel_nxt_array = []
-        for line in open('../Data/0000/%03d_cloth.txt' % (t+1), 'r'):
+        for line in open('../Data/0050/%03d_cloth.txt' % (t+1), 'r'):
             vel = line.split('\n')[0].split(' ')[:3]
-            vel = np.array([ float(v) for v in vel])
+            vel = np.array([float(v) for v in vel])
             vel_nxt_array.append(vel)
         vel_nxt_array = np.array(vel_nxt_array)
         vel_list.append(vel_nxt_array - vel_array)
@@ -71,34 +71,35 @@ def cloth_vis():
     for line in open('../Data/cloth_connection.txt', 'r'):
         cloth_mesh_tri_array.append(int(line.split('\n')[0]))
     cloth_mesh_tri_array = np.array(cloth_mesh_tri_array).reshape(-1, 3)
+
     if has_ball:
         for line in open('../Data/sphere_connection.txt', 'r'):
             ball_mesh_tri_array.append(int(line.split('\n')[0]))
         ball_mesh_tri_array = np.array(ball_mesh_tri_array).reshape(-1, 3)
 
-    for file_idx in range(3, 499):
+    for file_idx in range(500):
         fig = plt.figure()
         ax = fig.gca(projection='3d')
 
         pos = []
-        for line in open('/media/xjwxjw/626898FF2DF873F3/Documents/ClothSimData/data_0424/0043/%03d_cloth.txt' % file_idx, 'r'):
+        for line in open('/home/xjwxjw/Documents/ClothSim/Data/data/0050/%03d_cloth.txt' % file_idx, 'r'):
             line = line.split('\n')[0].split(' ')[:3]
             pos.append(np.array([float(x) for x in line]))
         pos = np.stack(pos, 0)
         x = pos[:,0]
         y = pos[:,2]
         z = pos[:,1]
-        ax.plot_trisurf(x, y, z, triangles=cloth_mesh_tri_array, linewidth=0.2, antialiased=True, color = 'b')
+        ax.plot_trisurf(x, y, z, triangles = cloth_mesh_tri_array, linewidth = 0.2, antialiased = True, color = 'b')
 
         pos = []
-        for line in open('/media/xjwxjw/626898FF2DF873F3/Documents/ClothSimData/data_0424/0043/%03d_ball.txt' % file_idx, 'r'):
+        for line in open('/home/xjwxjw/Documents/ClothSim/Data/data/0050/%03d_ball.txt' % file_idx, 'r'):
             line = line.split('\n')[0].split(' ')[:3]
             pos.append(np.array([float(x) for x in line]))
         pos = np.stack(pos, 0)
         x = pos[:,0]
         y = pos[:,2]
         z = pos[:,1]
-        ax.plot_trisurf(x, y, z, triangles=ball_mesh_tri_array, linewidth=0.2, antialiased=True, color = 'r')
+        ax.plot_trisurf(x, y, z, triangles = ball_mesh_tri_array, linewidth = 0.2, antialiased = True, color = 'r')
 
         ax.set_xlim([-1.0, 1.0])
         ax.set_ylim([-1.0, 1.0])
@@ -156,4 +157,4 @@ def gen_video():
     save_to_video(output_path, output_video_file, 20)
 
 if __name__ == "__main__":
-    hist_vis()
+    cloth_vis()

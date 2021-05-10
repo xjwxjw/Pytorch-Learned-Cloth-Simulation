@@ -18,7 +18,7 @@ def main():
     num_workers = 8
     shuffle = True
     train = True
-    noise = False
+    noise = True
     num_epochs = 5001
     beta0 = 0.9
     beta1 = 0.999
@@ -158,83 +158,114 @@ def main():
     total_step = len(sploader)
     scheduler = None
     if use_scheduler:
-        scheduler = torch.optim.lr_scheduler.StepLR(optimizer, 500, gamma=0.1)
+        scheduler = torch.optim.lr_scheduler.StepLR(optimizer, 100, gamma=0.1)
     
     # world_feature = None
     for num_epoch in range(num_epochs):
         np.random.seed()
-        for step, (cloth_state, ball_state, uv_state, world_state, cloth_nxt_state, world_adjmap) in enumerate(sploader):                
+        for step, (cloth_state, ball_state, uv_state, worldcloth_state, worldball_state, cloth_nxt_state, worldcloth_adjmap, worldball_adjmap) in enumerate(sploader):                
             
             cloth_state = torch.stack([item for item in cloth_state], 0).cuda()
             ball_state = torch.stack([item for item in ball_state], 0).cuda()
             uv_state = torch.stack([item for item in uv_state], 0).cuda()
             cloth_nxt_state = torch.stack([item for item in cloth_nxt_state], 0).cuda()
-            # world_adjmap = torch.stack([item for item in world_adjmap], 0).cuda()
 
             #### encoder part ####
             cloth_feature = node_encoder(cloth_state)
             ball_feature = node_encoder(ball_state)
             
             uvedge_feature = uvedge_encoder(uv_state)
+            
             worldedge_state_list = []
             worldedge_node_i_index_list = []
             worldedge_node_j_index_list = []
-            for bs in range(len(world_state)):
-                if world_state[bs].size(0) > 0:
-                    worldedge_state_list.append(world_state[bs])
-                    node_i_index = world_state[bs][:, 0].detach().cpu().numpy()
-                    node_j_index = world_state[bs][:, 1].detach().cpu().numpy()
+            for bs in range(len(worldcloth_state)):
+                if worldcloth_state[bs].size(0) > 0:
+                    worldedge_state_list.append(worldcloth_state[bs])
+                    node_i_index = worldcloth_state[bs][:, 0].detach().cpu().numpy()
+                    node_j_index = worldcloth_state[bs][:, 1].detach().cpu().numpy()
                     worldedge_node_i_index_list.append(node_i_index)
                     worldedge_node_j_index_list.append(node_j_index)
                 else:
                     worldedge_node_i_index_list.append([])
                     worldedge_node_j_index_list.append([])
-
-            worldedge_feature = None
+            worldedgecloth_feature = None
             if len(worldedge_state_list) > 0:
                 worldedge_state = torch.cat(worldedge_state_list).unsqueeze(0)
-                worldedge_feature = worldedge_encoder(worldedge_state[:, :, 2:].cuda())
+                worldedgecloth_feature = worldedge_encoder(worldedge_state[:, :, 2:].cuda())
+            
+            worldedge_state_list = []
+            worldedge_node_i_index_list = []
+            worldedge_node_j_index_list = []
+            for bs in range(len(worldball_state)):
+                if worldball_state[bs].size(0) > 0:
+                    worldedge_state_list.append(worldball_state[bs])
+                    node_i_index = worldball_state[bs][:, 0].detach().cpu().numpy()
+                    node_j_index = worldball_state[bs][:, 1].detach().cpu().numpy()
+                    worldedge_node_i_index_list.append(node_i_index)
+                    worldedge_node_j_index_list.append(node_j_index)
+                else:
+                    worldedge_node_i_index_list.append([])
+                    worldedge_node_j_index_list.append([])
+            worldedgeball_feature = None
+            if len(worldedge_state_list) > 0:
+                worldedge_state = torch.cat(worldedge_state_list).unsqueeze(0)
+                worldedgeball_feature = worldedge_encoder(worldedge_state[:, :, 2:].cuda())
 
             for l in range(process_steps):
                 ### uv edge feature update ####    
                 uvedge_feature_cat = torch.cat([uvedge_feature, cloth_feature[:, uvedge_node_i], cloth_feature[:, uvedge_node_j]], -1)
                 uvedge_nxt_feature = uvedge_processor_list[l](uvedge_feature_cat)
                 
-                ### world edge feature update ####
-                if worldedge_feature is not None:
+                ### cloth-ball world edge feature update ####
+                if worldedgeball_feature is not None:
                     worldedge_feature_node_i_list = []
                     worldedge_feature_node_j_list = []
-                    for bs in range(len(world_state)):
-                        if world_state[bs].size(0) > 0:
-                            node_i_index = world_state[bs][:, 0].detach().cpu().numpy()
-                            node_j_index = world_state[bs][:, 1].detach().cpu().numpy() 
+                    for bs in range(len(worldball_state)):
+                        if worldball_state[bs].size(0) > 0:
+                            node_i_index = worldball_state[bs][:, 0].detach().cpu().numpy()
+                            node_j_index = worldball_state[bs][:, 1].detach().cpu().numpy() 
                             worldedge_feature_node_i_list.append(cloth_feature[bs, node_i_index])
                             worldedge_feature_node_j_list.append(ball_feature[bs, node_j_index])
                     worldedge_feature_node_i = torch.cat(worldedge_feature_node_i_list, 0).unsqueeze(0)
                     worldedge_feature_node_j = torch.cat(worldedge_feature_node_j_list, 0).unsqueeze(0)
-                    worldedge_feature_cat = torch.cat([worldedge_feature, worldedge_feature_node_i, worldedge_feature_node_j], -1) 
-                    worldedge_nxt_feature = worldedge_processor_list[l](worldedge_feature_cat)
+                    worldedge_feature_cat = torch.cat([worldedgeball_feature, worldedge_feature_node_i, worldedge_feature_node_j], -1) 
+                    worldedgeball_nxt_feature = worldedge_processor_list[l](worldedge_feature_cat)
                     #### NOTE: here we assume batch size is 1 ####
-                    agr_world_feature = torch.matmul(world_adjmap[0].unsqueeze(0).cuda(), worldedge_nxt_feature)
+                    agr_worldball_feature = torch.matmul(worldball_adjmap[0].unsqueeze(0).cuda(), worldedgeball_nxt_feature)
                 else:
-                    agr_world_feature = torch.zeros((len(cloth_state), cloth_state[0].size(0), hidden_feature)).cuda()
+                    agr_worldball_feature = torch.zeros((len(cloth_state), cloth_state[0].size(0), hidden_feature)).cuda()
+                
+                ### cloth-cloth world edge feature update ####
+                if worldedgecloth_feature is not None:
+                    worldedge_feature_node_i_list = []
+                    worldedge_feature_node_j_list = []
+                    for bs in range(len(worldcloth_state)):
+                        if worldcloth_state[bs].size(0) > 0:
+                            node_i_index = worldcloth_state[bs][:, 0].detach().cpu().numpy()
+                            node_j_index = worldcloth_state[bs][:, 1].detach().cpu().numpy() 
+                            worldedge_feature_node_i_list.append(cloth_feature[bs, node_i_index])
+                            worldedge_feature_node_j_list.append(cloth_feature[bs, node_j_index])
+                    worldedge_feature_node_i = torch.cat(worldedge_feature_node_i_list, 0).unsqueeze(0)
+                    worldedge_feature_node_j = torch.cat(worldedge_feature_node_j_list, 0).unsqueeze(0)
+                    worldedge_feature_cat = torch.cat([worldedgecloth_feature, worldedge_feature_node_i, worldedge_feature_node_j], -1) 
+                    worldedgecloth_nxt_feature = worldedge_processor_list[l](worldedge_feature_cat)
+                    #### NOTE: here we assume batch size is 1 ####
+                    agr_worldcloth_feature = torch.matmul(worldcloth_adjmap[0].unsqueeze(0).cuda(), worldedgecloth_nxt_feature)
+                else:
+                    agr_worldcloth_feature = torch.zeros((len(cloth_state), cloth_state[0].size(0), hidden_feature)).cuda()
 
                 ### node feature update ####
                 agr_uv_feature = torch.matmul(adj_map[:cloth_feature.size(0)], uvedge_nxt_feature)
-                # agr_world_feature = torch.zeros((len(cloth_state), cloth_state[0].size(0), hidden_feature)).cuda()
-                # cnt = 0
-                # for bs in range(len(world_state)):
-                #     if world_state[bs].size(0) > 0:
-                #         for node_i_idx in worldedge_node_i_index_list[bs]:
-                #             agr_world_feature[bs, int(node_i_idx)] += worldedge_nxt_feature[0, cnt]
-                #             cnt += 1
-                cloth_feature_cat = torch.cat([cloth_feature, agr_uv_feature, agr_world_feature], -1)
+                cloth_feature_cat = torch.cat([cloth_feature, agr_uv_feature, agr_worldball_feature + agr_worldcloth_feature], -1)
                 cloth_nxt_feature = node_processor_list[l](cloth_feature_cat)
 
                 #### residual connection ####
                 uvedge_feature = uvedge_feature + uvedge_nxt_feature
-                if worldedge_feature is not None:
-                    worldedge_feature = worldedge_feature + worldedge_nxt_feature
+                if worldedgeball_feature is not None:
+                    worldedgeball_feature = worldedgeball_feature + worldedgeball_nxt_feature
+                if worldedgecloth_feature is not None:
+                    worldedgecloth_feature = worldedgecloth_feature + worldedgecloth_nxt_feature
                 cloth_feature = cloth_feature + cloth_nxt_feature
             
             output = decoder(cloth_feature)
@@ -249,9 +280,7 @@ def main():
 
             optimizer.zero_grad()
             loss.backward()
-            # torch.nn.utils.clip_grad_norm_(parm_list, 0.1)
             optimizer.step()
-            # print("epoch: %04d, step: %04d, loss: %06f" % (num_epoch, step, loss))
             writer.add_scalar('train_loss', loss.detach().cpu().numpy(), global_step = num_epoch * total_step + step)
 
         torch.save(node_encoder.state_dict(), model_dir + '/node_encoder.pkl')
