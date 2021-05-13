@@ -5,6 +5,6 @@ This is the unofficial implementation of the approach described in the paper:
 
 Work in progress.
 
-[Current progress](https://drive.google.com/file/d/1-ftG-ZhOt4xUDblDqQ-tJ_ofOVu3dLNg/view?usp=sharing): able for long-term rollout without consideration of (self-)collision:
+[Current progress](https://drive.google.com/file/d/1znvXDCT-_EBQOUpeePhMU3_zGYeLg3Xo/view?usp=sharing): able for long-term rollout with consideration of (self-)collision.
 
 
